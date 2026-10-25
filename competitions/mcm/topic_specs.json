@@ -1,0 +1,203 @@
+{
+  "_doc": "MCM/ICM 题号、近年真题与 task_type 路由。task_type 只用于 config/dim_weights.json 查评分权重；选方法看 problem_shape（Stage 1 从题面判定）。交付物与子问数必须从当届题面重新提取，不得按题号或历年题目推断。observed_methods 来自 O 奖论文 Summary 的方法关键词出现率（scripts/build_empirical.py 语料 + 关键词表，见 题型与算法对照.md），是观察值，不是推荐清单。",
+  "_version": "1.0",
+  "competition": "mcm",
+  "official_name": "Mathematical Contest in Modeling (MCM) / Interdisciplinary Contest in Modeling (ICM)",
+  "duration_h": 96,
+  "team_size": 3,
+  "language": "en",
+  "compiler": "pdflatex",
+  "page_limit": 25,
+  "default_subproblem_count": null,
+  "problem_shapes": {
+    "continuous_dynamics": "连续时间/物理机理：ODE、PDE、守恒律、种群动力学",
+    "discrete_optimization": "调度、选址、路径、分配：规划 + 启发式 + 多目标",
+    "data_inference": "从数据估计隐变量、预测、归因：统计/机器学习 + 验证 + 可解释性",
+    "network_systems": "网络、系统动力学、供应链、流程：图模型 + 仿真 + 优化",
+    "evaluation_policy": "指标体系、多准则决策、政策比较：评价 + 情景分析 + 面向决策者的建议",
+    "simulation_stochastic": "元胞自动机、Agent、蒙特卡洛：用仿真回答'如果……会怎样'"
+  },
+  "topics": {
+    "A": {
+      "label": "MCM Problem A",
+      "category": "Continuous",
+      "task_type_key": "A_continuous",
+      "typical_shapes": [
+        "continuous_dynamics",
+        "simulation_stochastic"
+      ],
+      "recent": {
+        "2019": "A Game of Ecology（龙的生态与能量需求）",
+        "2020": "Moving North（海水升温下苏格兰鲱鱼/鲭鱼迁移与渔业）",
+        "2021": "Fungi（真菌分解与生物多样性）",
+        "2022": "Power Profile of a Cyclist（自行车手功率分配）",
+        "2023": "Drought-Stricken Plant Communities（干旱下植物群落演替）",
+        "2024": "Resource Availability and Sex Ratios（七鳃鳗性别比与生态系统）",
+        "2025": "Testing Time: The Constant Wear on Stairs（楼梯磨损反演年代与使用）",
+        "2026": "Modeling Smartphone Battery Drain（手机电池 SOC 连续时间模型）"
+      },
+      "observed_methods": {
+        "ODE/微分方程": 0.33,
+        "Lotka-Volterra/种群": 0.29,
+        "物理/力学": 0.18,
+        "蒙特卡洛": 0.11,
+        "交叉验证/误差指标": 0.11,
+        "PDE/有限元": 0.09,
+        "灵敏度分析": 0.71,
+        "_n": 45
+      },
+      "notes": "近年 A 题一半是生态/生物机理，一半是物理/工程机理。2026 题面明确：纯曲线拟合或黑箱 ML 不满足要求——A 题的核心交付是**显式的连续时间模型**。"
+    },
+    "B": {
+      "label": "MCM Problem B",
+      "category": "Discrete",
+      "task_type_key": "B_discrete",
+      "typical_shapes": [
+        "discrete_optimization",
+        "simulation_stochastic",
+        "network_systems"
+      ],
+      "recent": {
+        "2019": "Send in the Drones（飓风灾后无人机物资投送系统）",
+        "2020": "The Longest Lasting Sandcastle（沙堡基础形状）",
+        "2021": "Fighting Wildfires（无人机扑救澳洲山火）",
+        "2022": "Water and Electricity（米德湖/鲍威尔湖水资源分配）",
+        "2023": "Reimagining Maasai Mara（马赛马拉保护区管理）",
+        "2024": "Searching for Submersibles（失联潜水器定位与搜索）",
+        "2025": "Managing Sustainable Tourism（朱诺可持续旅游）",
+        "2026": "Creating a Moon Colony Using a Space Elevator System（太空电梯月球殖民地运输）"
+      },
+      "observed_methods": {
+        "多目标/Pareto": 0.32,
+        "启发式(GA/PSO/SA/蚁群)": 0.27,
+        "AHP": 0.19,
+        "图论/网络": 0.16,
+        "回归": 0.16,
+        "ODE/微分方程": 0.14,
+        "灵敏度分析": 0.7,
+        "_n": 37
+      },
+      "notes": "B 题名为 Discrete，实际常是'优化 + 仿真 + 决策建议'的综合题，2025/2026 都要 memo/letter。"
+    },
+    "C": {
+      "label": "MCM Problem C",
+      "category": "Data Insights",
+      "task_type_key": "C_data",
+      "typical_shapes": [
+        "data_inference"
+      ],
+      "recent": {
+        "2019": "The Opioid Crisis（阿片类药物危机扩散）",
+        "2020": "A Wealth of Data（亚马逊评论与评分）",
+        "2021": "Confirming the Buzz about Hornets（亚洲大黄蜂目击报告分类）",
+        "2022": "Trading Strategies（黄金与比特币交易策略）",
+        "2023": "Predicting Wordle Results（Wordle 结果预测）",
+        "2024": "Momentum in Tennis（网球比赛势头）",
+        "2025": "Models for Olympic Medal Tables（奥运奖牌榜预测与名帅效应）",
+        "2026": "Data With The Stars（与星共舞观众票反推与计票规则）"
+      },
+      "observed_methods": {
+        "交叉验证/误差指标": 0.51,
+        "回归": 0.48,
+        "神经网络/LSTM": 0.41,
+        "随机森林/XGBoost": 0.31,
+        "图论/网络": 0.28,
+        "时间序列": 0.28,
+        "灵敏度分析": 0.48,
+        "_n": 71
+      },
+      "notes": "唯一固定给数据的题。O 奖论文 57% 在 Summary 里报验证指标（R²、准确率、置信区间）。2026C 要估计的观众票在数据里没有观测——典型 no_paired_labels，不是监督学习。"
+    },
+    "D": {
+      "label": "ICM Problem D",
+      "category": "Operations Research / Network Science",
+      "task_type_key": "D_network",
+      "typical_shapes": [
+        "network_systems",
+        "discrete_optimization"
+      ],
+      "recent": {
+        "2019": "Time to Leave the Louvre（卢浮宫疏散）",
+        "2020": "Teaming Strategies（足球队传球网络）",
+        "2021": "The Influence of Music（音乐影响力网络）",
+        "2022": "Data Analytics Maturity（企业数据与分析系统成熟度）",
+        "2023": "Prioritizing the UN Sustainability Goals（联合国 SDG 网络优先级）",
+        "2024": "Great Lakes Water Problem（五大湖水位调控）",
+        "2025": "Making the Connection: Baltimore Transportation（Key Bridge 倒塌后的巴尔的摩交通网络）",
+        "2026": "Managing Sports for Success（职业球队经营与管理）"
+      },
+      "observed_methods": {
+        "图论/网络": 0.87,
+        "熵权/CRITIC": 0.38,
+        "排队/离散事件": 0.13,
+        "启发式(GA/PSO/SA/蚁群)": 0.13,
+        "控制/动态规划": 0.13,
+        "AHP": 0.13,
+        "灵敏度分析": 0.41,
+        "_n": 39
+      },
+      "notes": "84% 的 O 奖论文 Summary 出现网络/图。2026D 要 1–2 页 letter 给球队老板与总经理。"
+    },
+    "E": {
+      "label": "ICM Problem E",
+      "category": "Sustainability",
+      "task_type_key": "E_interdisciplinary",
+      "typical_shapes": [
+        "evaluation_policy",
+        "continuous_dynamics",
+        "network_systems"
+      ],
+      "recent": {
+        "2019": "What is the True Cost of Land Use Projects?（土地利用的生态服务成本）",
+        "2020": "Drowning in Plastic（一次性塑料垃圾）",
+        "2021": "Rethinking the Food System（重塑食物系统）",
+        "2022": "Forest for Carbon Sequestration（森林碳汇与采伐）",
+        "2023": "Light Pollution（光污染）",
+        "2024": "Sustainability of Property Insurance（极端天气下的财产保险）",
+        "2025": "Making Room for Agriculture（森林变农田的生态系统）",
+        "2026": "Passive Solar Shading（被动式遮阳）"
+      },
+      "observed_methods": {
+        "熵权/CRITIC": 0.44,
+        "AHP": 0.38,
+        "聚类": 0.19,
+        "ODE/微分方程": 0.15,
+        "图论/网络": 0.12,
+        "多目标/Pareto": 0.1,
+        "灵敏度分析": 0.52,
+        "_n": 48
+      },
+      "notes": "评价类方法比例不低，但 O 奖论文几乎都把评价嵌在机理或预测模型里；2025E 四篇 O 奖全部以微分方程 / Lotka-Volterra 食物网为主线。"
+    },
+    "F": {
+      "label": "ICM Problem F",
+      "category": "Policy",
+      "task_type_key": "F_policy",
+      "typical_shapes": [
+        "evaluation_policy",
+        "data_inference"
+      ],
+      "recent": {
+        "2019": "Universal, Decentralized, Digital Currency（全球数字货币）",
+        "2020": "The Place Where I Belong（气候移民）",
+        "2021": "Higher Education（高等教育体系健康度）",
+        "2022": "Space Equity（太空资源公平）",
+        "2023": "Green GDP（绿色 GDP）",
+        "2024": "Reducing Illegal Wildlife Trade（打击野生动物非法贸易）",
+        "2025": "Cybersecurity Policy（网络安全政策效果）",
+        "2026": "To Gen-AI, or Not To Gen-AI（生成式 AI 与职业/教育）"
+      },
+      "observed_methods": {
+        "熵权/CRITIC": 0.51,
+        "AHP": 0.36,
+        "聚类": 0.28,
+        "回归": 0.28,
+        "图论/网络": 0.15,
+        "TOPSIS": 0.15,
+        "灵敏度分析": 0.44,
+        "_n": 39
+      },
+      "notes": "是否要 memo/letter 只由当届题面决定（2024F 要 memo，2026F 不要）。2025F 的 O 奖论文里 DID/因果推断明显增多。"
+    }
+  }
+}

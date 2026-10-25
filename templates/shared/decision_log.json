@@ -1,0 +1,258 @@
+{
+  "_schema_version": "3.1",
+  "_doc": "跨阶段决策日志。每个阶段开头读、结尾写。L2 回检读此文件寻找跨阶段冲突。schema 与 stage_NN.md 实际写入字段一一对齐。v3.1 加入规则核对、AI 使用台账与最终论文元数据。",
+  "competition": "mcm",
+  "task_type": null,
+  "_competition_doc": "enum: mcm（MCM/ICM，A–F 题）。score_artifact.py / stage 文件按此字段 dispatch competitions/mcm/* 加载。",
+  "_task_type_doc": "**题号**代码，不带竞赛前缀：A_continuous / B_discrete / C_data / D_network / E_interdisciplinary / F_policy（见 competitions/mcm/topic_specs.json）。写成 mcm:A_continuous 会在 config/dim_weights.json 里查不到、静默回退到 default。由 stage 1 选题后填入。**只用于 score_artifact.py 查评分权重，不是题型**——选方法看 problem_shape。",
+  "problem_shape": null,
+  "_problem_shape_doc": "**题型**，六选一：continuous_dynamics(连续时间/物理机理，ODE/PDE) | discrete_optimization(调度/选址/路径/分配) | data_inference(从数据估计隐变量、预测、归因) | network_systems(网络/系统动力学/供应链) | evaluation_policy(指标体系、多准则决策、政策比较) | simulation_stochastic(元胞自动机/Agent/蒙特卡洛)。由 stage 1 **从题面**判定，stage 3 据此选方法主线（competitions/mcm/题型与算法对照.md）。**题号不是题型**：2026 A 题是电池 SOC 连续模型，2025 A 题是楼梯磨损反演——同一题号、方法主线完全不同。",
+  "problem_shape_basis": "",
+  "_problem_shape_basis_doc": "判定依据：题面里的哪句话、哪个数据特征支持这个题型。空着不算完成 stage 1。",
+  "problem_shape_modifiers": [],
+  "_problem_shape_modifiers_doc": "叠加在主线之上的**结构性约束**，可多选：open_data_required（题面要求队伍自己找公开数据并注明来源——美赛常见，数据检索要进时间预算）、repeated_measures（同一对象多条记录，观测不独立）、no_paired_labels（要估计的量在数据里没有观测，如 2026C 的观众投票，不是监督学习）、stakeholder_deliverable（要写 letter/memo/report 给非技术读者，见 problem_meta.required_deliverables）、explicit_model_form（题面限定模型形式，如 2026A '纯曲线拟合/黑箱 ML 不满足要求'）。open_data / repeated_measures 等由 scripts/scan_attachments.py 与题面扫描得出，不靠人记得去看。",
+  "problem": null,
+  "problem_meta": {
+    "year": null,
+    "letter": null,
+    "title": null,
+    "deadline_iso": null,
+    "team_size": null,
+    "required_deliverables": [],
+    "_required_deliverables_doc": "题面要求的、计入 25 页的额外交付物，取值 letter | memo | policy_brief | report。stage 1 从题面 'Your PDF solution ... should include' 段逐条抄出；check_compliance.py 据此逐项 fail closed。空数组 = 题面只要标准件（Summary/目录/解答/参考文献）。",
+    "deliverable_specs": [],
+    "_deliverable_specs_doc": "每个额外交付物的读者与篇幅，原文抄题面：[{\"kind\":\"letter\",\"audience\":\"MCM Agency\",\"length\":\"one page\"}]。"
+  },
+  "paper_metadata": {
+    "_doc": "最终渲染元数据：mcm_control_number（COMAP 发的 7 位队伍控制号）/ problem（A–F）/ year / title / keywords。CLI 显式参数可覆盖。不得填写 0000000、1111111、ABCDEF、TITLE OF YOUR PAPER、keyword1 等占位符——render_paper.py 会 fail closed。",
+    "mcm_control_number": null,
+    "problem": null,
+    "year": null,
+    "title": null,
+    "keywords": []
+  },
+  "mode": "standard",
+  "started_at": null,
+  "current_stage": 0,
+  "resume": {
+    "_doc": "跨会话续跑所需的信息。96 小时赛期里上下文必然被压缩多次、大概率换会话，届时**只有磁盘上的东西还在**。2023A 演练做了一次中断恢复审计：schema 3.1 原本对下面七类信息全无归宿，恢复时只能靠猜或重做，而重做最容易在口径上悄悄改口。每个阶段结尾必写。",
+    "last_write_iso": null,
+    "in_flight": {
+      "_doc": "被打断时正在做什么。current_stage 只说到阶段，说不到'第几个子问、做到哪一步'；qi_status 的合法取值里也没有'进行中'。",
+      "stage": null,
+      "qi": null,
+      "action": "",
+      "blocking_unknown": ""
+    },
+    "next_actions": [],
+    "_next_actions_doc": "下一步的具体动作，写成可直接执行的句子。恢复的第一件事是读它，而不是重新读一遍题面自己想。",
+    "open_questions": [],
+    "_open_questions_doc": "悬而未决、需要人拍板的问题。中断若发生在等人回答时，这一条不写就彻底丢了。",
+    "reproduce": {
+      "_doc": "别人（或换了会话的自己）怎么把数跑出来。COMAP 不收代码文件，但论文结果必须可复现，这一条同时服务于恢复与 Stage 9 数值核对。",
+      "entrypoints": [],
+      "seed": "",
+      "env_notes": ""
+    },
+    "settled_conventions": [],
+    "_settled_conventions_doc": "已经定死、**不许重新决定**的口径：变量起算点、平均的加权方式、单位、数据取舍规则等。恢复时最危险的不是忘了做什么，而是把某个口径换了个同样合理的定法，导致前后两问的数字不可比。"
+  },
+  "compliance": {
+    "ruleset": {
+      "competition_year": null,
+      "verified_at": null,
+      "official_urls": [],
+      "page_limit": null,
+      "font_requirement": null,
+      "file_limits": {},
+      "anonymity_rules": [],
+      "ai_disclosure_rules": [],
+      "notes": ""
+    },
+    "ai_usage": null,
+    "_ai_usage_doc": "初始化为 null，要求团队核对后显式改为数组。[] 只表示确认未使用 AI；每条记录遵循 templates/shared/ai_usage_ledger.json。null 或缺失字段不得被解释为未使用。"
+  },
+  "budget": {
+    "_token_usage_doc": "仅当 harness/API 暴露可观测、可核验的 token usage 时记录 tokens_used/tokens_cap；不可观测时保持 null，不估算或伪造。",
+    "tokens_used": null,
+    "tokens_cap": null,
+    "stage_durations_h": {}
+  },
+  "stages": {
+    "0": {
+      "_label": "kickoff",
+      "team_roles": {},
+      "tools_ready": [],
+      "checklist_completed": false,
+      "problem_scan": {
+        "problem_id": null,
+        "domain_keywords": [],
+        "data_attachments": [],
+        "subproblem_count": null,
+        "primary_problem_type": null,
+        "secondary_types": [],
+        "estimated_difficulty": null,
+        "data_size_signal": null
+      },
+      "time_budget_h": {},
+      "collab_protocol": {},
+      "notes": ""
+    },
+    "1": {
+      "_label": "problem_selection",
+      "candidates_assessed": [],
+      "selected": null,
+      "rationale": "",
+      "rejected_alternatives": [],
+      "risks_identified": []
+    },
+    "2": {
+      "_label": "analysis",
+      "decomposition": [],
+      "key_variables": [],
+      "key_constraints": [],
+      "objective_per_subproblem": {},
+      "data_schema": {},
+      "preprocessing_decisions": {},
+      "subproblem_dependency": {}
+    },
+    "3": {
+      "_label": "model_selection",
+      "candidate_models": [],
+      "selected_per_subproblem": {},
+      "rejection_log": [],
+      "toy_demos_passed": false,
+      "red_team": [],
+      "model_family_consistency": ""
+    },
+    "4": {
+      "_label": "foundation",
+      "assumptions": [],
+      "symbols": [],
+      "terminology": [],
+      "consistency_check": {}
+    },
+    "5": {
+      "_label": "subproblem_loop",
+      "qi_count": null,
+      "_qi_count_doc": "题目子问题总数，必须由当前题面实际提取并在 Stage 1 后填入；topic_specs 仅用于题号/task_type 路由，不预设子问数。",
+      "qi_weights": [],
+      "_qi_weights_doc": "per-Qi 加权聚合权重数组, 长度=qi_count. 默认均匀 [1.0]*qi_count. score_artifact.py compute_stage5_verdict 用此重加权 mean.",
+      "qi_status": {},
+      "_qi_status_doc": "{Q1: pass | mark_for_review | refine | block | in_progress | not_started, ...}. high-severity issue 必须标记 block；mark_for_review = 该 Qi 单独弱但全 stage 仍 pass, L2 必读。in_progress / not_started 由 agent 在 Qi 开工与完工时维护，**不由 score_artifact.py 写入**（它只在评分后写 pass/mark_for_review/refine/block），加这两个值是为了让中断恢复时看得出哪个子问做了一半。",
+      "review_qis": [],
+      "refine_qis": [],
+      "block_qis": [],
+      "aggregate": null,
+      "sub_problems": {
+        "_template": {
+          "model_name": "",
+          "math_formulation_path": "",
+          "code_path": "",
+          "results_path": "",
+          "figures": [],
+          "key_metrics": {},
+          "physical_meaning_summary": "",
+          "scores": {},
+          "issues": [],
+          "iterations": 0
+        }
+      },
+      "cross_reference_chain": {},
+      "assumption_change_history": []
+    },
+    "6": {
+      "_label": "robustness",
+      "params_varied_jointly": [],
+      "method": "",
+      "deltas": [],
+      "robust_intervals": {},
+      "stability_verdict": "",
+      "failure_warning": "",
+      "L2_backtrack": {},
+      "figures": []
+    },
+    "7": {
+      "_label": "evaluation",
+      "strengths": [],
+      "limitations": [],
+      "improvements": [],
+      "generalizations": []
+    },
+    "8": {
+      "_label": "writing",
+      "section_word_counts": {},
+      "figures_per_subproblem": {},
+      "tables_per_subproblem": {},
+      "summary_drafts": [],
+      "anchor_phrase_hits": {},
+      "danger_phrase_hits": [],
+      "compliance": {
+        "rules_rechecked": false,
+        "paper_profile": null,
+        "ai_ledger_complete": false
+      }
+    },
+    "9": {
+      "_label": "review",
+      "anti_patterns_check": {
+        "total": null,
+        "_total_doc": "由 active competition 的 anti_patterns.md 在 Stage 9 初始化，禁止将任一赛制的条目数硬编码为三赛制通用值。",
+        "passed": 0,
+        "fixed": 0,
+        "deferred": 0,
+        "details": []
+      },
+      "panel_scores": {
+        "panel_v1": {},
+        "aggregate_v1": {},
+        "redo_actions": [],
+        "panel_v2": {}
+      },
+      "weakest_section": null,
+      "redo_log": [],
+      "red_team_record": [],
+      "compliance_checks": {
+        "rules_verified": false,
+        "anonymity_passed": false,
+        "page_limit_passed": false,
+        "ai_disclosure_passed": false,
+        "supporting_materials_passed": false
+      },
+      "final_pdf_path": null,
+      "submission_ready": false
+    }
+  },
+  "scores": {
+    "_doc": "{stage_key: [{iteration, scores:{dim:score}, min, mean, verdict, ts, qi_id?, weighted_mean?, review_qis?, refine_qis?}]}. stage 5 双轨: '5' 存 stage-level, '5_per_qi' 存 per-Qi (entry 含 qi_id). v3.0 verdict 扩展含 'pass_with_review' (任 Qi mark_for_review 但整体 pass) 与 'refine_partial' (仅部分 Qi 需 refine, 其他 Qi 保留). dim key 必须命中 feedback_layer1_critic.md §6 (1_xxx/2_xxx/.../5_xxx) 白名单, 或竞赛 rubric_overlay.json 中 stage_overrides 定义的特化 dim",
+    "0": [],
+    "1": [],
+    "2": [],
+    "3": [],
+    "4": [],
+    "5": [],
+    "5_per_qi": [],
+    "6": [],
+    "7": [],
+    "8": [],
+    "9": []
+  },
+  "iterations": {
+    "_doc": "{stage_key: count_of_iterations}",
+    "0": 0,
+    "1": 0,
+    "2": 0,
+    "3": 0,
+    "4": 0,
+    "5": 0,
+    "5_per_qi": 0,
+    "6": 0,
+    "7": 0,
+    "8": 0,
+    "9": 0
+  },
+  "events": {
+    "_doc": "时间线事件: backtrack, panel, red_team, calibration, mode_change, problem_scan",
+    "log": []
+  }
+}

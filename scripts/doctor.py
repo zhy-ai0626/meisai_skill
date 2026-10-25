@@ -1,0 +1,758 @@
+#!/usr/bin/env python3
+"""Preflight checks for the meisai_skill (MCM/ICM) package and local toolchain."""
+
+from __future__ import annotations
+
+import argparse
+import importlib.util
+import json
+import os
+import re
+import shutil
+import subprocess
+import sys
+from dataclasses import asdict, dataclass
+from pathlib import Path
+
+# tests/ 用 spec_from_file_location 按路径加载本文件，那种方式不会把 scripts/
+# 放到 sys.path 上，同目录的 helper 就 import 不到。显式补一下。
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import _console  # noqa: E402
+import _toolpath  # noqa: E402
+
+
+SKILL_ROOT = Path(__file__).resolve().parent.parent
+COMPETITIONS = ("mcm",)  # 本 skill 只做 MCM/ICM（A–F 题）
+COMPETITION_FILES = (
+    "README.md",
+    "winning_patterns.md",
+    "phrase_bank.md",
+    "anti_patterns.md",
+    "abstract_template.md",
+    "paper_skeleton.md",
+    "rubric_overlay.json",
+    "topic_specs.json",
+    "empirical.json",
+    "current_rules.md",
+)
+RENDER_ENGINES = {"mcm": "pdflatex"}
+REQUIRED_TEX_FILES = {
+    # newtx = COMAP 官方 Summary Sheet 模板用的 Times 字体
+    "mcm": ("newtxtext.sty", "newtxmath.sty"),
+}
+MODELING_MODULES = ("numpy", "scipy", "pandas", "matplotlib", "sklearn")
+# pypdf 供 check_compliance.py 读最终 PDF（页数、页眉控制号、字号、AI 报告位置）；
+# 缺了它 Stage 9 的合规自查整条跑不了，必须在开赛前就发现，而不是交卷前 20 分钟。
+COMPLIANCE_MODULES = ("pypdf",)
+CORE_SECTION_MARKERS = {
+    "abstract",
+    "1_problem_restate",
+    "2_problem_analysis",
+    "3_assumptions",
+    "4_notation",
+    "5_models",
+    "6_sensitivity",
+    "7_evaluation",
+    "8_references",
+    "appendix_code",
+}
+# memo_letter（题面要求的信件/备忘录，计入 25 页）与 ai_use_report（不计页数）
+# 是 OPTIONAL block：文件存在才渲染，但 marker 必须在模板里。
+EXPECTED_RENDER_MARKERS = {
+    "mcm": CORE_SECTION_MARKERS | {"memo_letter", "ai_use_report"},
+}
+
+
+@dataclass(frozen=True)
+class Check:
+    name: str
+    status: str
+    detail: str
+    fix: str | None = None
+
+
+def _check(name: str, ok: bool, detail: str, fix: str | None = None) -> Check:
+    return Check(name=name, status="pass" if ok else "fail", detail=detail, fix=fix)
+
+
+def _optional(name: str, ok: bool, detail: str, fix: str | None = None) -> Check:
+    return Check(name=name, status="pass" if ok else "warn", detail=detail, fix=fix)
+
+
+def _load_json(path: Path) -> tuple[bool, object | str]:
+    try:
+        return True, json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        return False, str(exc)
+
+
+def _frontmatter_name(path: Path) -> str | None:
+    try:
+        text = path.read_text(encoding="utf-8")
+    except OSError:
+        return None
+    match = re.search(r"\A---\s*\n.*?^name:\s*[\"']?([^\n\"']+)", text, re.DOTALL | re.MULTILINE)
+    return match.group(1).strip() if match else None
+
+
+def _anti_pattern_count(path: Path) -> int:
+    text = path.read_text(encoding="utf-8")
+    return len(re.findall(r"^###\s+[A-Z]\d+\.\s", text, re.MULTILINE))
+
+
+def _tex_file_available(filename: str) -> bool:
+    """Ask the active TeX distribution whether a required class/package exists."""
+    kpsewhich = shutil.which("kpsewhich")
+    if not kpsewhich:
+        return False
+    try:
+        result = subprocess.run(
+            [kpsewhich, filename], capture_output=True, text=True, check=False
+        )
+    except OSError:
+        return False
+    return result.returncode == 0 and bool(result.stdout.strip())
+
+
+def _template_packages(competition: str) -> list[str]:
+    """模板里实际 \\usepackage 的宏包名。
+
+    只查主字体宏包是不够的：上游 2026-09-03 实测，本机 TeX Live 是 scheme-small，
+    `siunitx` 不存在，而它一旦被引用就是 `! Emergency stop`、连残缺 PDF 都不出。
+    latex-smoke 会真编译模板、能兜住这种情况；但把清单逐个报出来，
+    才能让人在 Stage 0 就知道"哪些能用、哪些别碰"。
+    """
+    template = SKILL_ROOT / "templates" / "latex" / competition / "main.tex"
+    if not template.is_file():
+        return []
+    text = template.read_text(encoding="utf-8")
+    names: list[str] = []
+    for group in re.findall(r"^\s*\\usepackage(?:\[[^\]]*\])?\{([^}]+)\}",
+                            text, re.MULTILINE):
+        for name in group.split(","):
+            name = name.strip()
+            if name and name not in names:
+                names.append(name)
+    return names
+
+
+SMOKE_TEX = {"mcm": SKILL_ROOT / "templates" / "latex" / "mcm" / "smoke.tex"}
+SMOKE_TIMEOUT_S = 120
+GATE_TIMEOUT_S = 60
+
+
+def _smoke_gates() -> tuple[bool, str]:
+    """真跑一次三个提交门，而不是只确认文件存在。
+
+    `package-structure` 只能证明脚本在，证明不了它能跑：语法错、import 错、
+    依赖缺失都要到 Stage 9 交卷前才暴露，而那时没有时间修。
+    这里给每个门喂一份**故意有问题**的最小输入，要求它**报出问题**（退出码 1）——
+    只测"能加载"太弱，那样脚本里判定逻辑整段失效也照样通过。
+
+    退出码约定：0 = 没查出问题，1 = 查出问题，2 = 没跑成（缺文件/缺依赖/参数错）。
+    这里期望 1；出现 2 或异常退出即为不就绪。
+    """
+    import tempfile
+
+    scripts = SKILL_ROOT / "scripts"
+    results: list[str] = []
+    failures: list[str] = []
+
+    with tempfile.TemporaryDirectory(prefix="mathmodel-gates-") as tmp:
+        work = Path(tmp)
+        (work / "results").mkdir()
+        (work / "results" / "r.json").write_text(
+            '{"eta": 0.5038}', encoding="utf-8")
+        # 植入两个问题：一句没进台账的自检承诺，一个结果文件里没有的数值
+        (work / "paper.tex").write_text(
+            "下面对 beta=0 与 beta=90 做极限退化自检。\n"
+            "最终效率为 0.5038，另有一个查不到的数 0.7391。\n",
+            encoding="utf-8")
+        (work / "ledger.json").write_text(
+            '{"claims": [], "limitations": []}', encoding="utf-8")
+
+        def run(name: str, argv: list[str], expect: int, marker: str) -> None:
+            """跑一个门。**退出码不够用**：Python 抛 SyntaxError / ImportError 时
+            退出码也是 1，与"门正确报出问题"撞车——实测在 check_numbers.py 末尾
+            追加一行非法语法，只看退出码的版本照样报通过。
+            所以还要求 stdout 出现该门特有的标记，且 stderr 里没有 traceback。
+            """
+            # 必须显式指定 encoding="utf-8"。`text=True` 会按 locale 解码，
+            # 在中文 Windows 上是 GBK，而子进程被管道接走时 _console.init() 已切到
+            # UTF-8 —— 解码在 subprocess 的读取线程里抛 UnicodeDecodeError，
+            # 父进程拿到的 stdout 是 **None**，而且**看不到任何异常**。
+            # 结果是标记匹配永远不成立，这个检查会静默地什么都测不出来。
+            env = dict(os.environ, PYTHONIOENCODING="utf-8")
+            try:
+                proc = subprocess.run(
+                    [sys.executable, str(scripts / name)] + argv,
+                    cwd=work, capture_output=True,
+                    encoding="utf-8", errors="replace", env=env,
+                    check=False, timeout=GATE_TIMEOUT_S)
+            except subprocess.TimeoutExpired:
+                failures.append("%s 超时" % name)
+                return
+            except OSError as exc:
+                failures.append("%s 起不来: %s" % (name, exc))
+                return
+            err = proc.stderr or ""
+            if "Traceback" in err or "SyntaxError" in err or "ImportError" in err:
+                failures.append("%s 崩了：%s"
+                                % (name, err.strip().splitlines()[-1][:120]))
+                return
+            if proc.returncode != expect:
+                tail = (err or proc.stdout or "").strip().splitlines()
+                failures.append("%s 退出码 %d（期望 %d）%s"
+                                % (name, proc.returncode, expect,
+                                   "：" + tail[-1][:120] if tail else ""))
+                return
+            if marker not in (proc.stdout or ""):
+                failures.append("%s 退出码对，但输出里没有 %r——判定逻辑可能没跑到"
+                                % (name, marker))
+                return
+            results.append(name)
+
+        run("check_selfaudit.py",
+            ["--ledger", "ledger.json", "--paper", "paper.tex"], 1,
+            "unlogged-promise")
+        run("check_numbers.py",
+            ["--paper", "paper.tex", "--results", "results/"], 1,
+            "找不到")
+
+        # 数据口径门。植入的问题：有数据（data_schema 非空）但
+        # preprocessing_decisions 是空的 —— 期望它报 missing_decisions。
+        (work / "dlog.json").write_text(json.dumps({
+            "stages": {"2": {"data_schema": {"data.csv": {"rows": 100}},
+                             "preprocessing_decisions": {}}}},
+            ensure_ascii=False), encoding="utf-8")
+        run("check_data_decisions.py", ["--decision-log", "dlog.json"], 1,
+            "missing_decisions")
+
+        # 图表门。植入的问题：引用了一个不存在的图文件 + 一个悬挂 \ref。
+        (work / "figpaper.tex").write_text(
+            "如图~\\ref{fig:a} 与式~\\ref{eq:nowhere}。\n"
+            "\\includegraphics{no_such_figure.png}\\label{fig:a}\n",
+            encoding="utf-8")
+        run("check_figures.py", ["--paper", "figpaper.tex"], 1,
+            "missing_image_file")
+
+        # 合规门要一份真 PDF。用 pypdf 造一份空白的——没有 Summary Sheet、
+        # 没有参考文献，必然违反多条规则，正好用来验证"能读 PDF 且判定逻辑会报错"。
+        pdf = work / "paper.pdf"
+        try:
+            from pypdf import PdfWriter                  # noqa: WPS433
+
+            writer = PdfWriter()
+            writer.add_blank_page(width=612, height=792)
+            with open(pdf, "wb") as fh:
+                writer.write(fh)
+        except Exception as exc:                          # noqa: BLE001
+            failures.append("造不出测试 PDF（pypdf 不可用）：%s" % exc)
+        else:
+            run("check_compliance.py", ["--paper", "paper.pdf"], 1, "合规自查")
+
+    if failures:
+        return False, "；".join(failures)
+    # 数量别写死。原来这里硬编码"三门"，加到五门之后消息就开始说谎了——
+    # 而说谎的消息比没有消息更坏：它让人以为覆盖面没变。
+    return True, "%d 个门（%s）均按预期报出植入的问题" % (
+        len(results),
+        "/".join(n.replace("check_", "").replace(".py", "") for n in results))
+
+
+def _render_smoke(competition: str) -> tuple[bool, str]:
+    """真的编译一次 smoke.tex，而不是只问 `pdflatex --version`。
+
+    `shutil.which(engine)` 与 `kpsewhich newtxtext.sty` 都只能证明"装了"，
+    证明不了"能出 PDF"——MiKTeX 按需装包被拦、字体映射缺失、宏包版本冲突都只在
+    真编译时才暴露。96 小时赛制里这类问题必须在 Stage 0 暴露，拖到 Stage 9 就来不及了。
+
+    返回 (是否成功, 面向人的说明)。
+    """
+    engine = RENDER_ENGINES.get(competition)
+    tex = SMOKE_TEX.get(competition)
+    if engine is None or tex is None:
+        return False, f"no smoke template configured for {competition}"
+    if not tex.exists():
+        return False, f"smoke template missing: {tex}"
+    if shutil.which(engine) is None:
+        return False, f"{engine} not found; cannot compile"
+
+    import tempfile
+
+    with tempfile.TemporaryDirectory(prefix="mathmodel-smoke-") as tmp:
+        workdir = Path(tmp)
+        target = workdir / "smoke.tex"
+        target.write_text(tex.read_text(encoding="utf-8"), encoding="utf-8")
+        try:
+            proc = subprocess.run(
+                [engine, "-interaction=nonstopmode", "-halt-on-error", "smoke.tex"],
+                cwd=workdir, capture_output=True, text=True,
+                check=False, timeout=SMOKE_TIMEOUT_S,
+            )
+        except subprocess.TimeoutExpired:
+            return False, f"{engine} timed out after {SMOKE_TIMEOUT_S}s"
+        except OSError as exc:
+            return False, f"{engine} failed to start: {exc}"
+
+        pdf = workdir / "smoke.pdf"
+        if pdf.exists() and pdf.stat().st_size > 1024:
+            return True, f"{engine} produced a {pdf.stat().st_size // 1024} KiB PDF"
+
+        # 从 .log 里挑出第一条真正的 TeX 报错，比甩几百行 stdout 有用
+        log = workdir / "smoke.log"
+        reason = ""
+        if log.exists():
+            for line in log.read_text(encoding="utf-8", errors="replace").splitlines():
+                if line.startswith("!"):
+                    reason = line.strip()
+                    break
+        if not reason:
+            tail = (proc.stdout or proc.stderr or "").strip().splitlines()
+            reason = tail[-1].strip() if tail else f"exit code {proc.returncode}"
+        return False, f"compile failed: {reason}"
+
+
+def run_checks(
+    competition: str,
+    workspace: Path | None = None,
+    check_tools: bool = True,
+    require_renderer: bool = False,
+    require_modeling: bool = False,
+) -> list[Check]:
+    checks: list[Check] = []
+
+    py_ok = sys.version_info >= (3, 10)
+    checks.append(_check(
+        "python",
+        py_ok,
+        f"Python {sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}",
+        "Install Python 3.10 or newer." if not py_ok else None,
+    ))
+
+    required_paths = (
+        "SKILL.md",
+        "AGENTS.md",
+        "config/dim_weights.json",
+        "config/rubric.json",
+        "templates/shared/decision_log.json",
+        "scripts/score_artifact.py",
+        "scripts/extract_diff.py",
+        "scripts/render_paper.py",
+        "scripts/render_ai_usage.py",
+        "scripts/check_numbers.py",
+        "scripts/check_compliance.py",
+        "scripts/check_selfaudit.py",
+        "scripts/check_data_decisions.py",
+        "scripts/check_figures.py",
+        "scripts/render_rubric.py",
+        "scripts/scan_attachments.py",
+        "figures/mcm_style.py",
+        "figures/starter.py",
+        "figures/flow_pptx.py",
+        "templates/shared/ai_usage_ledger.json",
+        "templates/shared/self_audit.json",
+        "templates/latex/mcm/main.tex",
+        "templates/latex/mcm/smoke.tex",
+    )
+    missing = [item for item in required_paths if not (SKILL_ROOT / item).is_file()]
+    checks.append(_check(
+        "package-structure",
+        not missing,
+        "all core entrypoints present" if not missing else f"missing: {', '.join(missing)}",
+    ))
+
+    skill_name = _frontmatter_name(SKILL_ROOT / "SKILL.md")
+    shim_name = _frontmatter_name(SKILL_ROOT / "skills" / "mcm-icm" / "SKILL.md")
+    checks.append(_check(
+        "skill-metadata",
+        skill_name == "mcm-icm" and shim_name == skill_name,
+        f"root={skill_name!r}, plugin-shim={shim_name!r}",
+    ))
+
+    json_paths = [
+        SKILL_ROOT / "config" / "dim_weights.json",
+        SKILL_ROOT / "templates" / "shared" / "decision_log.json",
+        SKILL_ROOT / "templates" / "shared" / "ai_usage_ledger.json",
+    ]
+    for comp in COMPETITIONS:
+        json_paths.extend((
+            SKILL_ROOT / "competitions" / comp / "rubric_overlay.json",
+            SKILL_ROOT / "config" / "rubric.json",
+            SKILL_ROOT / "competitions" / comp / "topic_specs.json",
+            SKILL_ROOT / "competitions" / comp / "empirical.json",
+        ))
+    invalid_json = []
+    parsed: dict[Path, object] = {}
+    for path in json_paths:
+        ok, value = _load_json(path)
+        if ok:
+            parsed[path] = value
+        else:
+            invalid_json.append(f"{path.relative_to(SKILL_ROOT)}: {value}")
+    checks.append(_check(
+        "json-config",
+        not invalid_json,
+        f"{len(json_paths)} files parsed" if not invalid_json else "; ".join(invalid_json),
+    ))
+
+    decision_path = SKILL_ROOT / "templates" / "shared" / "decision_log.json"
+    decision = parsed.get(decision_path, {})
+    decision_schema_ok = (
+        isinstance(decision, dict)
+        and decision.get("_schema_version") == "3.1"
+        and isinstance(decision.get("stages"), dict)
+        and isinstance(decision.get("scores"), dict)
+        and isinstance(decision.get("iterations"), dict)
+        and isinstance(decision.get("compliance"), dict)
+        and isinstance(decision.get("compliance", {}).get("ruleset"), dict)
+        and "ai_usage" in decision.get("compliance", {})
+    )
+    checks.append(_check(
+        "decision-log-schema",
+        decision_schema_ok,
+        "decision_log schema 3.1 with compliance state"
+        if decision_schema_ok else "decision_log template is not a complete v3.1 state",
+        "Restore the v3.1 decision-log template before using the workflow."
+        if not decision_schema_ok else None,
+    ))
+
+    comp_dir = SKILL_ROOT / "competitions" / competition
+    missing_comp = [name for name in COMPETITION_FILES if not (comp_dir / name).is_file()]
+    checks.append(_check(
+        "competition-pack",
+        not missing_comp,
+        f"{competition}: {len(COMPETITION_FILES)} required files"
+        if not missing_comp else f"{competition} missing: {', '.join(missing_comp)}",
+    ))
+
+    anti_path = comp_dir / "anti_patterns.md"
+    if anti_path.is_file():
+        anti_count = _anti_pattern_count(anti_path)
+        checks.append(_check(
+            "anti-pattern-index",
+            anti_count > 0,
+            f"{competition}: {anti_count} indexed checks",
+        ))
+        declared = (
+            decision.get("stages", {}).get("9", {})
+            .get("anti_patterns_check", {}).get("total")
+            if isinstance(decision, dict) else None
+        )
+        checks.append(_check(
+            "anti-pattern-state-init",
+            declared is None,
+            f"template defers total; {competition} source currently has {anti_count}",
+            "Keep the shared template total null; Stage 9 initializes it from the active competition pack."
+            if declared is not None else None,
+        ))
+
+    if competition in EXPECTED_RENDER_MARKERS:
+        template = SKILL_ROOT / "templates" / "latex" / competition / "main.tex"
+        markers = re.findall(
+            r"^\s*%\s*MATHMODEL:SECTION\s+([A-Za-z0-9_]+)\s*$",
+            template.read_text(encoding="utf-8"),
+            re.MULTILINE,
+        ) if template.is_file() else []
+        expected = EXPECTED_RENDER_MARKERS[competition]
+        actual = set(markers)
+        duplicates = sorted({marker for marker in markers if markers.count(marker) > 1})
+        missing_markers = sorted(expected - actual)
+        unexpected_markers = sorted(actual - expected)
+        markers_ok = (
+            not duplicates
+            and not missing_markers
+            and not unexpected_markers
+            and len(markers) == len(expected)
+        )
+        if markers_ok:
+            marker_detail = f"{competition}: {len(markers)}/{len(expected)} section markers"
+        else:
+            marker_detail = (
+                f"{competition}: missing={missing_markers}, "
+                f"unexpected={unexpected_markers}, duplicates={duplicates}"
+            )
+        checks.append(_check(
+            "render-markers",
+            markers_ok,
+            marker_detail,
+            "Restore the exact unique MATHMODEL section-marker set."
+            if not markers_ok else None,
+        ))
+
+    if workspace:
+        decision_path = workspace / "state" / "decision_log.json"
+        if decision_path.is_file():
+            ok, value = _load_json(decision_path)
+            compliance = value.get("compliance") if isinstance(value, dict) else None
+            valid = (
+                ok and isinstance(value, dict)
+                and value.get("_schema_version") == "3.1"
+                and value.get("competition") == competition
+                and isinstance(value.get("current_stage"), int)
+                and not isinstance(value.get("current_stage"), bool)
+                and 0 <= value["current_stage"] <= 9
+                and isinstance(value.get("stages"), dict)
+                and isinstance(value.get("scores"), dict)
+                and isinstance(value.get("iterations"), dict)
+                and isinstance(compliance, dict)
+                and isinstance(compliance.get("ruleset"), dict)
+                and "ai_usage" in compliance
+            )
+            checks.append(_check(
+                "workspace-state",
+                valid,
+                str(decision_path) if valid else f"invalid state: {value}",
+            ))
+        else:
+            checks.append(_optional(
+                "workspace-state",
+                False,
+                f"not initialized: {decision_path}",
+                "Start the skill once; the agent will initialize state automatically.",
+            ))
+
+    if check_tools:
+        engine = RENDER_ENGINES[competition]
+        # 「装了但当前终端看不见」是最常见的情形：安装器写了注册表 PATH，
+        # 而已经开着的 shell 拿的是安装之前的环境快照。先三级查找并补进本进程 PATH，
+        # 再判定"有没有装"，否则会把一个重开终端就好的问题误报成致命环境缺失。
+        engine_found = _toolpath.ensure_on_path(engine)
+        engine_ok = shutil.which(engine) is not None
+        engine_check = _check if require_renderer else _optional
+        checks.append(engine_check(
+            "latex-engine",
+            engine_ok,
+            f"{engine} found at {engine_found.directory} ({engine_found.source})"
+            if engine_ok and engine_found.recovered
+            else f"{engine} {'found' if engine_ok else 'not found'}",
+            f"Install a TeX distribution that provides {engine}." if not engine_ok
+            else _toolpath.advice(engine, engine_found),
+        ))
+        # 进程内补 PATH 只解决"本次能不能编"，不解决"下一个终端能不能编"。
+        # 单独留一条 warn，免得这件事被 latex-engine 那个 ✓ 盖过去。
+        if engine_ok and engine_found.recovered:
+            checks.append(_optional(
+                "latex-engine-on-path",
+                False,
+                f"{engine} 不在本终端的 PATH 上（命中来源：{engine_found.source}）；"
+                "doctor 进程内补的路径不会传给这个终端里手敲的命令",
+                _toolpath.advice(engine, engine_found),
+            ))
+        required_tex_files = REQUIRED_TEX_FILES[competition]
+        if required_tex_files:
+            missing_tex_files = [
+                filename for filename in required_tex_files
+                if not _tex_file_available(filename)
+            ]
+            checks.append(engine_check(
+                "latex-support",
+                not missing_tex_files,
+                "required TeX classes/packages found" if not missing_tex_files
+                else f"missing TeX support: {', '.join(missing_tex_files)}",
+                "MiKTeX: 打开 MiKTeX Console 装 newtx；TeX Live: tlmgr install newtx。"
+                if missing_tex_files else None,
+            ))
+        # 模板里逐个 \usepackage 的宏包也要在本机存在，否则 Stage 8 才会炸
+        packages = _template_packages(competition)
+        if packages and engine_ok:
+            missing_pkgs = [
+                name for name in packages
+                if not _tex_file_available(f"{name}.sty")
+            ]
+            checks.append(engine_check(
+                "latex-template-packages",
+                not missing_pkgs,
+                f"{len(packages)} 个模板宏包全部可用" if not missing_pkgs
+                else f"模板引用但本机缺失: {', '.join(missing_pkgs)}",
+                "缺失的宏包一旦被引用就是 `! Emergency stop`、连残缺 PDF 都不出。"
+                "要么用 tlmgr 装上，要么从模板里删掉并改写对应记号"
+                "（详见 competitions/mcm/静默陷阱.md）。"
+                if missing_pkgs else None,
+            ))
+        # 真编译一次。这是唯一能证明"最后交得出 PDF"的检查。
+        smoke_ok, smoke_detail = _render_smoke(competition)
+        checks.append(engine_check(
+            "latex-smoke",
+            smoke_ok,
+            smoke_detail,
+            "编译链跑不通就交不出论文，且这是 Stage 0 的 block，不允许推迟到 Stage 9。修复顺序："
+            "① 装 TeX 发行版（Windows: MiKTeX 或 TeX Live；Linux: texlive-latex-extra + texlive-fonts-extra）；"
+            "② MiKTeX 打开 Console → Settings → 'Always install missing packages on-the-fly'；"
+            "③ 确认 newtx / fancyhdr / lastpage 已装；"
+            f"④ 手动复现看完整报错：pdflatex -interaction=nonstopmode {SMOKE_TEX[competition]}；"
+            "⑤ 实在装不上，改用 Overleaf 编译 paper_output/main.tex，"
+            "或用 COMAP 官方 Word Summary Sheet 模板，但要提前告知队伍。"
+            if not smoke_ok else None,
+        ))
+
+        pandoc_found = _toolpath.ensure_on_path("pandoc")
+        pandoc_ok = shutil.which("pandoc") is not None
+        pandoc_check = _check if require_renderer else _optional
+        checks.append(pandoc_check(
+            "pandoc",
+            pandoc_ok,
+            f"pandoc found at {pandoc_found.directory} ({pandoc_found.source})"
+            if pandoc_ok and pandoc_found.recovered
+            else "pandoc found" if pandoc_ok else (
+                "pandoc not found; formal compilation is unavailable "
+                "(structural --no-compile remains available)"
+            ),
+            "Install Pandoc before formal paper compilation." if not pandoc_ok
+            else _toolpath.advice("pandoc", pandoc_found),
+        ))
+
+    missing_compliance = [
+        name for name in COMPLIANCE_MODULES if importlib.util.find_spec(name) is None
+    ]
+    checks.append(_check(
+        "compliance-stack",
+        not missing_compliance,
+        "合规自查依赖就绪" if not missing_compliance
+        else f"缺少 {', '.join(missing_compliance)}，Stage 9 合规自查无法读取 PDF",
+        "python -m pip install " + " ".join(missing_compliance)
+        if missing_compliance else None,
+    ))
+
+    # 真跑一次三个提交门。它们是 Stage 6/9 的强制项，坏了必须在 Stage 0 就知道。
+    gates_ok, gates_detail = _smoke_gates()
+    checks.append(_check(
+        "gates-smoke",
+        gates_ok,
+        gates_detail,
+        "提交门跑不通就等于没有门。逐个手动复现：\n"
+        "  python scripts/check_selfaudit.py --paper <论文.tex> --scaffold\n"
+        "  python scripts/check_numbers.py --paper <论文.tex> --results results/\n"
+        "  python scripts/check_compliance.py --paper <论文.pdf>\n"
+        "退出码 2 表示没跑成（多半缺 pypdf），不是论文有问题。"
+        if not gates_ok else None,
+    ))
+
+    if require_modeling:
+        missing_modules = [name for name in MODELING_MODULES if importlib.util.find_spec(name) is None]
+        checks.append(_check(
+            "modeling-stack",
+            not missing_modules,
+            "core modeling modules found" if not missing_modules else f"missing: {', '.join(missing_modules)}",
+            "Install templates/shared/requirements.txt." if missing_modules else None,
+        ))
+
+    # rubric 单一数据源同步。**md 里的表格是生成物，不是手写的。**
+    # 这份 rubric 曾散在四处（rubrics.md / 各 stage 副本 / DIM_WHITELIST /
+    # dim_weights.json），实测漂移到 stage 1/3/6/7 的维度名两边完全不同，
+    # 而键相同所以每一项既有检查都查不出来。现在唯一数据源是
+    # config/rubric.json，这一项就是防它再漂回去。
+    rubric_ok, rubric_detail = _check_rubric_sync()
+    checks.append(_check(
+        "rubric-sync",
+        rubric_ok,
+        rubric_detail,
+        "md 里的 rubric 表格由 config/rubric.json 生成。**不要手改表格**——"
+        "改 JSON 后跑 `python scripts/render_rubric.py --write`；"
+        "`--diff` 可以先看差异。"
+        if not rubric_ok else None,
+    ))
+
+    # 绘图样式。真画一张图确认 figures/mcm_style.py 能用：字体回退链、
+    # 灰度校样都在这里第一次被执行。坏在 Stage 5 出第一张图时才发现就晚了。
+    style_ok, style_detail = _check_figure_style()
+    checks.append(_check(
+        "figure-style",
+        style_ok,
+        style_detail,
+        "装 matplotlib；字体缺失时 mcm_style 会回退到 STIX/DejaVu，"
+        "仍失败就跑 `python figures/starter.py` 看完整报错。"
+        if not style_ok else None,
+    ))
+
+    return checks
+
+
+def _check_rubric_sync() -> tuple[bool, str]:
+    """md 里的 rubric 表格是否与 config/rubric.json 一致。
+
+    在进程内调 render_rubric.process()，不起子进程——这一项只读文件，
+    没有子进程那套编码/退出码的坑，直接调更快也更容易报出真实原因。
+    """
+    try:
+        sys.path.insert(0, str(SKILL_ROOT / "scripts"))
+        import importlib
+
+        rr = importlib.import_module("render_rubric")
+        importlib.reload(rr)
+        drift, msgs = rr.process(write=False, show_diff=False)
+    except Exception as exc:                           # noqa: BLE001
+        return False, "rubric 同步检查跑不起来: %s: %s" % (type(exc).__name__, exc)
+    if drift:
+        return False, "%d 处 md 表格与 config/rubric.json 不一致：%s" % (
+            drift, "；".join(m for m in msgs if "不一致" in m or "marker" in m)[:200])
+    return True, "%d 处 rubric 表格与 config/rubric.json 一致" % len(rr.TARGETS)
+
+
+def _check_figure_style() -> tuple[bool, str]:
+    """figures/mcm_style.py 能否加载并**真画一张图**。"""
+    if importlib.util.find_spec("matplotlib") is None:
+        return False, "matplotlib 没装，无法出图"
+    try:
+        import matplotlib
+        matplotlib.use("Agg")
+        sys.path.insert(0, str(SKILL_ROOT / "figures"))
+        import mcm_style as ms
+
+        name = ms.use()
+        import matplotlib.pyplot as plt
+        fig, ax = plt.subplots(figsize=(1.2, 1.0))
+        ax.plot([0, 1], [0, 1])
+        ms.finish(ax, xlabel="Distance (m)", ylabel="Power (MW)", legend=False)
+        import io
+        fig.savefig(io.BytesIO(), format="png")
+        plt.close(fig)
+        return True, f"绘图样式可用并已试渲染（字体: {name}）"
+    except Exception as exc:                           # noqa: BLE001
+        return False, f"绘图样式检查失败: {type(exc).__name__}: {exc}"
+
+
+def _print_human(checks: list[Check]) -> None:
+    symbols = {"pass": _console.sym("✓"), "warn": "!", "fail": _console.sym("✗")}
+    arrow = _console.sym("↳")
+    for item in checks:
+        print(f"{symbols[item.status]} {item.name}: {item.detail}")
+        if item.fix and item.status != "pass":
+            print(f"  {arrow} {item.fix}")
+    counts = {status: sum(item.status == status for item in checks) for status in symbols}
+    print(
+        f"\nSummary: {counts['pass']} passed, "
+        f"{counts['warn']} optional warnings, {counts['fail']} failed"
+    )
+
+
+def main() -> int:
+    _console.init()
+    parser = argparse.ArgumentParser(description="Check meisai_skill readiness.")
+    parser.add_argument("--competition", choices=COMPETITIONS, default="mcm")
+    parser.add_argument("--workspace", type=Path, default=None)
+    parser.add_argument("--json", action="store_true", dest="as_json")
+    parser.add_argument("--skip-tools", action="store_true", help="skip local Pandoc/TeX checks")
+    parser.add_argument("--require-renderer", action="store_true")
+    parser.add_argument("--require-modeling", action="store_true")
+    args = parser.parse_args()
+
+    if args.skip_tools and args.require_renderer:
+        parser.error("--require-renderer 不能与 --skip-tools 同时使用")
+
+    checks = run_checks(
+        competition=args.competition,
+        workspace=args.workspace.resolve() if args.workspace else None,
+        check_tools=not args.skip_tools,
+        require_renderer=args.require_renderer,
+        require_modeling=args.require_modeling,
+    )
+    if args.as_json:
+        print(json.dumps([asdict(item) for item in checks], ensure_ascii=False, indent=2))
+    else:
+        _print_human(checks)
+    return 1 if any(item.status == "fail" for item in checks) else 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

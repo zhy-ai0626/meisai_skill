@@ -1,0 +1,69 @@
+% Stage 0 compile smoke test for the MCM/ICM template (scripts/doctor.py latex-smoke).
+% Exercises the same packages as main.tex: newtx fonts, fancyhdr + lastpage header,
+% Summary Sheet header table, display math, booktabs table, float, listings.
+\documentclass[12pt,letterpaper]{article}
+\usepackage[left=1in,right=0.75in,top=1in,bottom=1in,headheight=15pt]{geometry}
+\usepackage[T1]{fontenc}
+\usepackage{newtxtext}
+\usepackage{amsmath,amssymb,amsthm}
+\usepackage{newtxmath}
+\usepackage{graphicx}
+\usepackage{float}
+\usepackage{booktabs}
+\usepackage{longtable}
+\usepackage{array}
+\usepackage{multirow}
+\usepackage{listings}
+\usepackage{xcolor}
+\usepackage{caption}
+\usepackage{subcaption}
+\usepackage{enumitem}
+\usepackage{fancyhdr}
+\usepackage{lastpage}
+\usepackage[hidelinks]{hyperref}
+\usepackage{url}
+
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[L]{Team \# 2700000}
+\fancyhead[R]{Page \thepage\ of \pageref{LastPage}}
+
+\begin{document}
+\begin{center}
+\begin{tabular}{*3{c}}
+  \parbox[t]{0.3\linewidth}{\centering\textbf{Problem Chosen}\\{\Large\textbf{B}}}
+  & \parbox[t]{0.3\linewidth}{\centering\textbf{2027\\MCM/ICM\\Summary Sheet}}
+  & \parbox[t]{0.3\linewidth}{\centering\textbf{Team Control Number}\\{\Large\textbf{2700000}}}\\
+  \hline
+\end{tabular}
+\end{center}
+
+\noindent\textbf{Summary.} Smoke test of the compile chain: the state of charge obeys
+\begin{equation}
+  \frac{\mathrm{d}\,\mathrm{SOC}}{\mathrm{d}t} = -\frac{P(t)}{V\,Q_{\max}}, \qquad
+  \mathrm{SOC}(0)=1 .
+\end{equation}
+
+\begin{table}[H]
+\centering
+\caption{Parameter values}
+\begin{tabular}{lcr}
+\toprule
+Symbol & Meaning & Value \\
+\midrule
+$Q_{\max}$ & capacity & 4500 mAh \\
+$V$ & nominal voltage & 3.85 V \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{lstlisting}[language=Python]
+soc = soc - power / (voltage * q_max) * dt
+\end{lstlisting}
+
+\begin{itemize}[nosep]
+  \item Strength: interpretable parameters.
+  \item Weakness: ignores aging.
+\end{itemize}
+\label{MathmodelSolutionEnd}
+\end{document}

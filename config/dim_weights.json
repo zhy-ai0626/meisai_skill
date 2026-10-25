@@ -1,0 +1,100 @@
+{
+  "_doc": "题型 dim 权重表 (competition × task_type × stage × dim → weight). score_artifact.py 在 compute_verdict 前对 scores 重加权。default 未列出的维度 = 1.0。权重被 clamp 到 [0.7, 1.5]。task_type 键见 competitions/mcm/topic_specs.json。",
+  "_design": "未列出的 dim 默认 1.0; task_type=default 等价老逻辑; 加权后 score 仍在 [1, 10]。",
+  "_clamp": {
+    "min": 0.7,
+    "max": 1.5
+  },
+  "mcm": {
+    "default": {
+      "_note": "美赛默认: 加权选择依据与沟通清晰度——评委第一轮只读 Summary 和图",
+      "3": {
+        "2_selection_rationale": 1.3
+      },
+      "8": {
+        "1_summary_sheet": 1.3,
+        "3_communication_clarity": 1.2
+      }
+    },
+    "A_continuous": {
+      "_note": "A 连续: 加权选择依据、假设支撑、连续时间模型本身（题面常写明纯数据拟合不满足要求）",
+      "3": {
+        "2_selection_rationale": 1.3,
+        "5_literature_support": 1.2
+      },
+      "4": {
+        "2_assumption_support": 1.3
+      },
+      "5": {
+        "1_subproblem_completeness": 1.2
+      },
+      "8": {
+        "1_summary_sheet": 1.3
+      }
+    },
+    "B_discrete": {
+      "_note": "B 离散: 加权算法可行性与跨问传递",
+      "3": {
+        "2_selection_rationale": 1.2,
+        "4_solver_feasibility": 1.3
+      },
+      "5": {
+        "2_cross_reference_chain": 1.2
+      },
+      "8": {
+        "1_summary_sheet": 1.3
+      }
+    },
+    "C_data": {
+      "_note": "C 数据: 加权数据处理、灵敏度与呈现",
+      "2": {
+        "4_data_alignment": 1.4
+      },
+      "6": {
+        "1_multivariate_perturbation": 1.4
+      },
+      "8": {
+        "3_communication_clarity": 1.3,
+        "4_formulas_figures_citations": 1.3
+      }
+    },
+    "D_network": {
+      "_note": "D 运筹/网络: 加权问题分解与求解可行性",
+      "2": {
+        "1_subproblem_decomposition": 1.3
+      },
+      "3": {
+        "4_solver_feasibility": 1.3
+      },
+      "8": {
+        "1_summary_sheet": 1.2
+      }
+    },
+    "E_interdisciplinary": {
+      "_note": "E 环境/可持续: 加权选择依据、文献与假设支撑、沟通",
+      "3": {
+        "2_selection_rationale": 1.4,
+        "5_literature_support": 1.3
+      },
+      "4": {
+        "2_assumption_support": 1.3
+      },
+      "8": {
+        "3_communication_clarity": 1.4
+      }
+    },
+    "F_policy": {
+      "_note": "F 政策: 加权推广边界与面向决策者的交付物（memo/letter/report）",
+      "3": {
+        "2_selection_rationale": 1.3
+      },
+      "7": {
+        "4_generalization_concrete": 1.4
+      },
+      "8": {
+        "3_communication_clarity": 1.5,
+        "2_section_completeness": 1.3
+      }
+    }
+  }
+}

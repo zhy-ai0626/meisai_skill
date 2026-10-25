@@ -1,0 +1,35 @@
+{
+  "_doc": "MCM/ICM 特化评分 overlay。config/rubric.json 已是美赛维度（stage 8/9），这里只放 panel personas 与资源路径；dim_whitelist 留空表示沿用 rubric.json。personas 是维护者设计的审阅视角，不是官方评分规则。",
+  "competition": "mcm",
+  "version": "1.0",
+  "dim_whitelist": {},
+  "stage_overrides": {
+    "8": {
+      "_note": "美赛 stage 8: Summary Sheet + 完整证据链 + 题面要求的特殊交付物 + 全英文 + 25 页预算"
+    },
+    "9": {
+      "_note": "美赛终审: check_compliance.py 无 FAIL → anti_patterns.md 逐条 → panel personas"
+    }
+  },
+  "panel_personas": [
+    {"id": "judge_30s", "label": "30-Second Judge", "weight": 1.5,
+     "focus": "只读 Summary Sheet 和翻图：能否在 30 秒内说出每个 Task 的答案与数值？标题与图题是否传达结论？"},
+    {"id": "rigor", "label": "Rigor Reviewer", "weight": 1.0,
+     "focus": "假设是否有理由、方程量纲是否一致、求解是否收敛、验证与灵敏度是否支撑结论"},
+    {"id": "modeling", "label": "Modeling Contribution", "weight": 1.3,
+     "focus": "模型是否回应题面的每一项要求（含 explicit_model_form 这类硬约束）、是否从简到繁、选型理由与基线对比"},
+    {"id": "communication", "label": "Communication Reviewer", "weight": 1.3,
+     "focus": "英文清晰度、术语一致、图表自解释、Introduction 的 Our Work 图是否让人一眼看懂结构"},
+    {"id": "stakeholder", "label": "Stakeholder Reader", "weight": 1.2,
+     "focus": "题面要求的 letter/memo：读者对、篇幅对、无公式、建议可执行且有数据支撑",
+     "_note": "题面不要 letter/memo 时，换成 weight=1.0 的 Reproducibility 视角：数据来源、参数表、关键代码是否足以复现"}
+  ],
+  "anti_pattern_path": "competitions/mcm/anti_patterns.md",
+  "phrase_bank_path": "competitions/mcm/phrase_bank.md",
+  "winning_patterns_path": "competitions/mcm/winning_patterns.md",
+  "abstract_template_path": "competitions/mcm/abstract_template.md",
+  "paper_skeleton_path": "competitions/mcm/paper_skeleton.md",
+  "memo_letter_guide_path": "competitions/mcm/Memo与Letter写法.md",
+  "latex_template_dir": "templates/latex/mcm",
+  "citation_format": "numbered [n] (IEEE-like) or author-year; COMAP 只要求一致、可核对"
+}

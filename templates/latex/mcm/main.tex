@@ -1,0 +1,148 @@
+% meisai_skill — MCM/ICM assembly template (original, MIT)
+% Used by scripts/render_paper.py --competition mcm  (engine: pdflatex)
+%
+% COMAP baseline (verified against the published 2027 instructions, see
+% competitions/mcm/current_rules.md):
+%   * English, readable font >= 12 pt, one PDF named <control number>.pdf, < 25 MB
+%   * Page 1 = Summary Sheet; every page shows team control number + page number
+%   * <= 25 pages in total: Summary Sheet, contents, solution, letter/memo,
+%     references, appendices and code all count
+%   * "Report on Use of AI" follows the solution and does NOT count
+%   * no student / advisor / school names anywhere
+%
+% MATHMODEL_* tokens are fail-closed: render_paper.py refuses a formal build
+% until every token is replaced from decision_log.paper_metadata or CLI flags.
+
+\documentclass[12pt,letterpaper]{article}
+
+\usepackage[left=1in,right=0.75in,top=1in,bottom=1in,headheight=15pt]{geometry}
+\usepackage[T1]{fontenc}
+\usepackage{newtxtext}
+\usepackage{amsmath,amssymb,amsthm}
+\usepackage{newtxmath} % must come after ams*
+\usepackage{graphicx}
+\usepackage{float}
+\usepackage{booktabs}
+\usepackage{longtable}
+\usepackage{array}
+\usepackage{multirow}
+\usepackage{listings}
+\usepackage{xcolor}
+\usepackage{caption}
+\usepackage{subcaption}
+\usepackage{enumitem}
+\usepackage{fancyhdr}
+\usepackage{lastpage}
+\usepackage[hidelinks]{hyperref}
+\usepackage{url}
+
+% Pandoc output helpers (tables, tight lists, images).
+\providecommand{\tightlist}{\setlength{\itemsep}{0pt}\setlength{\parskip}{0pt}}
+\makeatletter
+\def\maxwidth{\ifdim\Gin@nat@width>\linewidth\linewidth\else\Gin@nat@width\fi}
+\makeatother
+\setkeys{Gin}{width=\maxwidth,keepaspectratio}
+\providecommand{\pandocbounded}[1]{#1}
+\newcounter{none}
+
+\lstset{
+  basicstyle=\footnotesize\ttfamily,
+  breaklines=true,
+  frame=single,
+  numbers=left,
+  numberstyle=\tiny,
+  showstringspaces=false,
+}
+
+\newtheorem{theorem}{Theorem}
+\newtheorem{lemma}[theorem]{Lemma}
+\newtheorem{definition}{Definition}
+
+\newcommand{\TeamNumber}{MATHMODEL_MCM_CONTROL_NUMBER}
+\newcommand{\ProblemChosen}{MATHMODEL_MCM_PROBLEM}
+\newcommand{\ContestYear}{MATHMODEL_MCM_YEAR}
+
+% Header on every page, Summary Sheet included: "Team # 0000000, Page 6 of 25".
+% LastPage counts the AI report too; render_paper.py reports the solution page
+% count separately so the 25-page check is done against the right number.
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[L]{Team \# \TeamNumber}
+\fancyhead[R]{Page \thepage\ of \pageref{LastPage}}
+\renewcommand{\headrulewidth}{0.4pt}
+
+\setlength{\parskip}{0.4em}
+\captionsetup{font=small,labelfont=bf}
+
+\begin{document}
+
+% ---------------------------------------------------------------- page 1
+% Summary Sheet. Layout follows COMAP's official summary-sheet header
+% (Problem Chosen | Year MCM/ICM Summary Sheet | Team Control Number).
+% Keep the whole summary on this single page.
+\thispagestyle{fancy}
+\begin{center}
+\begin{tabular}{*3{c}}
+  \parbox[t]{0.3\linewidth}{\centering\textbf{Problem Chosen}\\[2pt]{\Large\textbf{\ProblemChosen}}}
+  & \parbox[t]{0.3\linewidth}{\centering\textbf{\ContestYear\\MCM/ICM\\Summary Sheet}}
+  & \parbox[t]{0.3\linewidth}{\centering\textbf{Team Control Number}\\[2pt]{\Large\textbf{\TeamNumber}}}\\
+  \hline
+\end{tabular}
+
+\vspace{0.6em}
+{\Large\textbf{MATHMODEL_MCM_TITLE}}
+\end{center}
+
+\begin{center}\textbf{\large Summary}\end{center}
+\par
+% MATHMODEL:SECTION abstract
+\par\vspace{0.5em}
+\noindent\textbf{Keywords:} MATHMODEL_MCM_KEYWORDS
+
+\clearpage
+
+% ---------------------------------------------------------------- page 2
+% Contents counts toward the 25 pages; 2026 problem statements list it as an
+% expected component, and it is present in nearly every Outstanding paper.
+% Not \small: COMAP asks for >= 12 pt everywhere, contents page included.
+\tableofcontents
+\clearpage
+
+% Section Markdown files own their headings (# Introduction, ...).
+% MATHMODEL:SECTION 1_problem_restate
+
+% MATHMODEL:SECTION 2_problem_analysis
+
+% MATHMODEL:SECTION 3_assumptions
+
+% MATHMODEL:SECTION 4_notation
+
+% MATHMODEL:SECTION 5_models
+
+% MATHMODEL:SECTION 6_sensitivity
+
+% MATHMODEL:SECTION 7_evaluation
+
+% Problem-specific letter / memo / policy brief. It counts toward the 25 pages.
+% Rendered only when paper_workspace/09_memo_letter.md exists.
+% MATHMODEL:OPTIONAL memo_letter BEGIN
+\clearpage
+% MATHMODEL:SECTION memo_letter
+% MATHMODEL:OPTIONAL memo_letter END
+
+% MATHMODEL:SECTION 8_references
+
+% MATHMODEL:SECTION appendix_code
+
+% Everything above this label is the <=25-page solution. render_paper.py reads
+% its page number from main.aux to report the solution length.
+\label{MathmodelSolutionEnd}
+
+% MATHMODEL:OPTIONAL ai_use_report BEGIN
+\clearpage
+\section*{Report on Use of AI}
+\addcontentsline{toc}{section}{Report on Use of AI}
+% MATHMODEL:SECTION ai_use_report
+% MATHMODEL:OPTIONAL ai_use_report END
+
+\end{document}

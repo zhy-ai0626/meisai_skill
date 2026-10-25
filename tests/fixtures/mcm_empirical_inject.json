@@ -1,0 +1,20 @@
+{
+  "_doc": "验证 fixture: empirical 注入. figure_count=6 < p25 → 期望 evidence 含 'status=低于 p25'。期望值随 competitions/mcm/empirical.json 的 figure_count 分位而定（279 篇 O 奖论文）。",
+  "_test_target": "score_artifact.py inject_evidence",
+  "_expected_output_contains": "p50=14, IQR=[12.0, 18.0]",
+  "stage_id": 8,
+  "iteration": 0,
+  "variant": "stage_level",
+  "scores": {
+    "1_summary_sheet": {"score": 7, "evidence": "逐 Task 有数值结论，但缺灵敏度结论"},
+    "2_section_completeness": {"score": 8, "evidence": "题面要求的 letter 已写"},
+    "3_communication_clarity": {"score": 8, "evidence": "图题写结论"},
+    "4_formulas_figures_citations": {"score": 7, "evidence": "图 6 张偏少"},
+    "5_page_budget": {"score": 8, "evidence": "解答 24 页"}
+  },
+  "min_score": 7,
+  "mean_score": 7.6,
+  "issues": [],
+  "verdict": "refine",
+  "evidence_metrics": {"figure_count": 6}
+}

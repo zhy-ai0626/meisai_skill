@@ -1,0 +1,19 @@
+# Codex UI 元数据。SKILL.md「入口」与 AGENTS.md 都引用本文件；
+# 它只是发现层的薄壳，**不要把工作流内容复制到这里**（见 AGENTS.md 的约定）。
+name: mcm-icm
+display_name: 美赛工作流 (MCM/ICM A–F)
+description: >-
+  美国大学生数学建模竞赛（MCM/ICM）A–F 题的端到端工作流：六选一选题、问题分解、模型选型，
+  到求解、灵敏度、英文论文与 Summary Sheet、letter/memo、AI 使用报告与 25 页合规终审，
+  共 10 个阶段，带可恢复的决策状态。经验层统计自 279 篇 O 奖论文（2018–2025）。
+  不适用于国赛 CUMCM、HiMCM、电工杯，也不用于一般性的模型选择或普通数据分析。
+version: "1.0"
+entrypoint: SKILL.md
+instructions: AGENTS.md
+license: MIT
+tags:
+  - mathematical-modeling
+  - mcm
+  - icm
+  - comap
+  - competition
