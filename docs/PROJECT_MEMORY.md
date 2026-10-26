@@ -4,7 +4,7 @@
 > Claude Code 通过根目录 `CLAUDE.md` 自动加载本文件；Codex 通过 `AGENTS.md` 的指引读取本文件。
 > **每次开发会话结束前更新"当前状态"和"下一步"两节**，并把日期写成绝对日期。
 
-最后更新：2026-10-26
+最后更新：2026-10-27
 
 ## 项目是什么
 
@@ -32,7 +32,13 @@
 
 1. **真题实跑**：用一道往年题（如 2026 C，本地有数据）在 Claude Code 和 Codex 里各跑一遍 Stage 0–9，记录卡住或输出不对的地方，按问题修 `references/stage_*.md` 和脚本。这是目前最大的未知。
 2. **触发测试**：显式 `$mcm-icm` 应触发；国赛、HiMCM、普通数据分析、普通论文润色不应触发（见 `AGENTS.md` 末段）。
-3. **加入 2026 年 O 奖论文**：2026 届结果已于 2026 年 5 月公布。拿到论文后按官方名单核对，放进语料目录，重跑 `build_empirical.py`，并更新 `competitions/mcm/README.md` 的样本表。
+3. **加入 2026 年 O 奖论文（卡在拿不到全文）**：2026-10-27 已把官方名单（41 篇）抄进 `C:\Users\MSI-\meisai_corpus\official_O.json`。全文只在 Mathmodels.org（会员）发布；本地资料里没有，Jackksonns、dick20、YuchenHuang2006 等 GitHub 合集也都止于 2025。拿到 PDF 后（文件名含控制号即可）：
+   ```bash
+   cd C:/Users/MSI-/meisai_corpus/tools
+   MINERU_TOKEN=... D:/conda/python.exe ingest_year.py --year 2026 --src <PDF 目录> --mineru
+   D:/conda/python.exe C:/Users/MSI-/meisai_skill/scripts/build_empirical.py --corpus ../corpus --out C:/Users/MSI-/meisai_skill/competitions/mcm/empirical.json
+   ```
+   然后更新 `competitions/mcm/README.md` 的样本表与"2026 未纳入"一条、`题型与算法对照.md` 的 n、测试 fixture `mcm_empirical_inject.json` 的期望分位，再跑全部测试。
 4. **赛前核对（2027-01-28 开赛前）**：重新打开 COMAP 2027 说明、AI 政策、官方 Summary Sheet 模板，逐条核 `current_rules.md`，更新核对日期。
 5. 把 `kit/5_算法讲解手册.md` 的出处和国赛味的测试数据换成美赛例子。
 6. 可选：加 GitHub Actions 跑单元测试和 `doctor.py --skip-tools`；有会员时补 Judges' Commentary 要点（只写摘要与出处，不搬原文）。
@@ -50,7 +56,8 @@
 
 - 原始资料：`D:\Users\MSI-\Desktop\大二\美赛`（往年 O 奖论文、2026 题目与数据、写作模板、付费课程资料）。**付费课程资料、题面、论文都不能进公开仓库。**
 - 解析后的语料：`C:\Users\MSI-\meisai_corpus\corpus\`（279 个 `<cid>.txt` + 70 个 MinerU `.md` + `_index*.json`）。2026-10-26 验证过：用它重跑 `build_empirical.py` 得到的结果与仓库里的 `empirical.json` 完全一致。
-- 同目录 `tools/` 是当时的维护脚本：`extract_*.py`（pdftotext 抽取与建索引）、`mineru_batch.py`（MinerU v4 批量 API）、`method_freq.py`（方法出现率）。`official_O.json` 是从官方结果页整理的 O 奖名单。
+- 同目录 `tools/` 是维护脚本：`ingest_year.py`（**新增一年用这个**：按官方名单筛 PDF → pdftotext → 文字太少的排进 MinerU → 写 `_index_<year>.json`）、`mineru_batch.py`（MinerU v4 批量 API）、`extract_*.py`（2018–2025 当时的一次性抽取脚本）、`method_freq.py`（方法出现率）。`official_O.json` 是从官方结果页整理的 O 奖名单（2022–2026）。
+- **MinerU 结果只留 `.md`**：统计只读 `<cid>.md`，单篇几十 KB。MinerU 原始 zip（图片 + 版面 json，每篇约 15 MB，70 篇近 1 GB）默认不再保存，需要时设 `MINERU_KEEP_ZIP=1`。`.md` 必须留：扫描版重新解析要花额度和时间，而且 MinerU 版本变化可能让重跑结果和 `empirical.json` 对不上。
 - MinerU token **只通过环境变量 `MINERU_TOKEN` 传入**，绝不写进任何文件或提交。
 
 重建实证层：
