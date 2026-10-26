@@ -2,6 +2,8 @@
 
 This repository contains the `mcm-icm` skill (美赛 MCM/ICM workflow). When working inside this repository, act as a maintainer: do not start the ten-stage contest workflow merely because modeling-related files are present.
 
+Before starting development work, read `docs/PROJECT_MEMORY.md` (current status, next steps, local environment, corpus location). Update its status and next-step sections before ending a session. `CLAUDE.md` only imports this file and that memory file, so Claude Code and Codex share the same notes.
+
 ## Sources of truth
 
 - `SKILL.md` defines runtime behavior and trigger boundaries.
